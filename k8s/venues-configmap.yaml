@@ -1,0 +1,13 @@
+# The venue registry lives here, not in the image. Adding a sports centre is
+# an edit + `kubectl rollout restart`, with no rebuild and no redeploy of code.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gym-monitor-venues
+data:
+  venues.json: |
+    [
+      {"id": "ngsc", "name": "南港運動中心", "url": "https://ngsc.cyc.org.tw/api"},
+      {"id": "nhsc", "name": "內湖運動中心", "url": "https://nhsc.cyc.org.tw/api"},
+      {"id": "wssc", "name": "文山運動中心", "url": "https://wssc.cyc.org.tw/api"}
+    ]

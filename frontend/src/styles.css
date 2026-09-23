@@ -1,0 +1,99 @@
+:root {
+  --fg: #0f172a;
+  --muted: #64748b;
+  --bg: #f8fafc;
+  --card: #ffffff;
+  --border: #e2e8f0;
+  --grid: #e2e8f0;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #e2e8f0;
+    --muted: #94a3b8;
+    --bg: #0f172a;
+    --card: #1e293b;
+    --border: #334155;
+    --grid: #334155;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, "Noto Sans TC", sans-serif;
+}
+
+main {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+h1 { font-size: 1.5rem; margin: 0 0 20px; }
+h2 { font-size: 1.1rem; margin: 32px 0 12px; }
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 20px;
+}
+
+.controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.controls select,
+.controls input,
+.controls button {
+  font-size: 1rem;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--fg);
+}
+
+.controls button { cursor: pointer; }
+
+/* auto-fit collapses to a single column on a phone with no media query */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.card-title { font-size: 0.9rem; font-weight: 600; }
+.card-number { font-size: 2.4rem; font-weight: 700; line-height: 1.2; }
+.card-capacity { font-size: 1rem; font-weight: 400; color: var(--muted); }
+.card-pct { font-size: 0.8rem; color: var(--muted); margin-top: 4px; }
+
+.meter {
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.meter-fill { height: 100%; }
+
+.updated, .note, .empty { color: var(--muted); font-size: 0.8rem; }
+.error { color: #dc2626; }

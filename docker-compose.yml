@@ -1,0 +1,55 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: gym
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: gym
+    # Bound to loopback, not 0.0.0.0: the database must never be reachable
+    # from outside this machine, including once the tunnel is up.
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gym -d gym"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://gym:${POSTGRES_PASSWORD}@db:5432/gym
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  poller:
+    build: .
+    command: ["python", "poll.py", "--loop", "600"]
+    environment:
+      DATABASE_URL: postgresql://gym:${POSTGRES_PASSWORD}@db:5432/gym
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+
+  # Phase 3: public access. Started only with `--profile public`, so local
+  # development never accidentally exposes anything.
+  #   docker compose --profile public up -d
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on: [api]
+    restart: unless-stopped
+    profiles: ["public"]
+
+volumes:
+  pgdata:

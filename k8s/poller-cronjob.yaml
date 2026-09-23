@@ -1,0 +1,41 @@
+# poll.py runs once and exits, so the schedule is the cluster's job, not a
+# library's. This is the one place in this project where k8s earns its keep.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: gym-poller
+spec:
+  schedule: "*/10 * * * *"
+  timeZone: "Asia/Taipei"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0        # no retry: the next tick is 10 minutes away
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: poller
+              image: gym-monitor:latest
+              imagePullPolicy: IfNotPresent
+              command: ["python", "poll.py"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: gym-monitor
+                      key: database-url
+                - name: VENUES_PATH
+                  value: /config/venues.json
+              volumeMounts:
+                - name: venues
+                  mountPath: /config
+              resources:
+                requests: { cpu: 50m, memory: 128Mi }
+                limits:   { memory: 256Mi }
+          volumes:
+            - name: venues
+              configMap:
+                name: gym-monitor-venues

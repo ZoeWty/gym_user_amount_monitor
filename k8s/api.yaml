@@ -1,0 +1,56 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: gym-api
+spec:
+  selector:
+    app: gym-api
+  ports:
+    - port: 80
+      targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gym-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gym-api
+  template:
+    metadata:
+      labels:
+        app: gym-api
+    spec:
+      containers:
+        - name: api
+          image: gym-monitor:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: gym-monitor
+                  key: database-url
+            - name: VENUES_PATH
+              value: /config/venues.json
+          ports:
+            - containerPort: 8000
+          volumeMounts:
+            - name: venues
+              mountPath: /config
+          # /healthz exists for exactly this.
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8000 }
+            initialDelaySeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8000 }
+            initialDelaySeconds: 15
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits:   { memory: 256Mi }
+      volumes:
+        - name: venues
+          configMap:
+            name: gym-monitor-venues

@@ -1,0 +1,29 @@
+# The only ingress. No Service of type LoadBalancer, no Ingress object, no
+# inbound port: cloudflared dials out and Cloudflare Access does the auth.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflared
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloudflared
+  template:
+    metadata:
+      labels:
+        app: cloudflared
+    spec:
+      containers:
+        - name: cloudflared
+          image: cloudflare/cloudflared:latest
+          args: ["tunnel", "--no-autoupdate", "run"]
+          env:
+            - name: TUNNEL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: gym-monitor
+                  key: tunnel-token
+          resources:
+            requests: { cpu: 20m, memory: 64Mi }
+            limits:   { memory: 128Mi }
