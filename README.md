@@ -98,6 +98,10 @@ Settings → General → **Start Docker Desktop when you sign in** 打勾。
 
 想確認重開機後真的活著，重開一次再跑 `./check.sh`。
 
+## 雲端部署
+
+見 [DEPLOY.md](DEPLOY.md)。筆電會睡，雲端不會 —— 缺掉的早上補不回來。
+
 ## 筆電睡眠 = 資料斷掉
 
 macOS 睡眠會把整個 Docker 虛擬機一起凍結，容器裡的 `time.sleep()` 不會前進。
