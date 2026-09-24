@@ -13,12 +13,58 @@ async function getJSON<T>(url: string): Promise<T> {
   return res.json() as Promise<T>
 }
 
+// Upstream only refreshes once a minute, so polling faster gains nothing.
+const REFRESH_MS = 60_000
+
+/**
+ * Fetch `url` now, and while `live` is true keep it current two ways:
+ * on a timer, and whenever the tab returns to the foreground.
+ *
+ * The visibility half is the one that matters on a phone: mobile browsers
+ * freeze timers in a backgrounded tab, so the moment you take the phone out
+ * of your pocket is exactly when the data is stalest and the timer is least
+ * likely to fire. Refetch then rather than waiting out the rest of the
+ * interval. (A WebSocket would not help here -- the connection gets dropped
+ * in the background too.)
+ */
+function useLiveFetch<T>(
+  url: string | null,
+  live: boolean,
+  onError: (message: string) => void,
+): T | null {
+  const [data, setData] = useState<T | null>(null)
+
+  useEffect(() => {
+    if (!url) return
+    let cancelled = false
+    const load = () =>
+      getJSON<T>(url)
+        .then((d) => { if (!cancelled) setData(d) })
+        .catch((e) => { if (!cancelled) onError(String(e)) })
+
+    load()
+    if (!live) return () => { cancelled = true }
+
+    const timer = setInterval(load, REFRESH_MS)
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') load()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [url, live, onError])
+
+  return data
+}
+
 export default function App() {
   const [venues, setVenues] = useState<Venue[]>([])
   const [venue, setVenue] = useState<string>('')
   const [date, setDate] = useState<string>(taipeiToday())
-  const [latest, setLatest] = useState<Latest | null>(null)
-  const [series, setSeries] = useState<Series | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const today = taipeiToday()
@@ -33,29 +79,11 @@ export default function App() {
       .catch((e) => setError(String(e)))
   }, [])
 
-  // Live numbers. Only poll while looking at today -- a past day cannot change.
-  useEffect(() => {
-    if (!venue) return
-    let cancelled = false
-    const load = () =>
-      getJSON<Latest>(`/api/latest?venue=${venue}`)
-        .then((d) => !cancelled && setLatest(d))
-        .catch((e) => !cancelled && setError(String(e)))
-    load()
-    if (!isToday) return () => { cancelled = true }
-    // 60s matches how often upstream itself refreshes; faster gains nothing.
-    const id = setInterval(load, 60_000)
-    return () => { cancelled = true; clearInterval(id) }
-  }, [venue, isToday])
-
-  useEffect(() => {
-    if (!venue) return
-    let cancelled = false
-    getJSON<Series>(`/api/series?venue=${venue}&date=${date}`)
-      .then((d) => !cancelled && setSeries(d))
-      .catch((e) => !cancelled && setError(String(e)))
-    return () => { cancelled = true }
-  }, [venue, date])
+  // Both stay live only while today is on screen; a past day cannot change.
+  const latest = useLiveFetch<Latest>(
+    venue ? `/api/latest?venue=${venue}` : null, isToday, setError)
+  const series = useLiveFetch<Series>(
+    venue ? `/api/series?venue=${venue}&date=${date}` : null, isToday, setError)
 
   return (
     <main>
