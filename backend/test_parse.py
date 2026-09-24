@@ -91,3 +91,54 @@ def test_empty_config_is_rejected(monkeypatch):
     _with_venues(monkeypatch, [])
     with pytest.raises(ValueError):
         venue_config.load()
+
+
+# --- opening hours ---------------------------------------------------------
+
+from datetime import date as _date, datetime as _dt
+from zoneinfo import ZoneInfo as _ZI
+
+from main import CLOSE_TIME, OPEN_TIME, TAIPEI, open_buckets
+
+_DAY = _date(2026, 9, 24)
+
+
+def _at(h, m=0):
+    return _dt(2026, 9, 24, h, m, tzinfo=TAIPEI)
+
+
+def test_past_day_is_the_whole_window():
+    b = open_buckets(_DAY, _at(23, 30))
+    assert b[0].time() == OPEN_TIME
+    assert b[-1].time() == CLOSE_TIME
+    assert len(b) == 85                      # 08:00..22:00 inclusive, /10min
+
+
+def test_nothing_outside_the_window_leaks_in():
+    for b in open_buckets(_DAY, _at(23, 30)):
+        assert OPEN_TIME <= b.time() <= CLOSE_TIME
+
+
+def test_before_opening_yields_nothing():
+    assert open_buckets(_DAY, _at(7, 59)) == []
+
+
+def test_exactly_at_opening_yields_one_bucket():
+    assert [b.time() for b in open_buckets(_DAY, _at(8, 0))] == [OPEN_TIME]
+
+
+def test_midday_stops_at_the_current_bucket():
+    b = open_buckets(_DAY, _at(15, 7))
+    assert b[-1].time().hour == 15 and b[-1].time().minute == 0   # not 15:10
+
+
+def test_after_closing_does_not_run_past_close():
+    assert open_buckets(_DAY, _at(23, 0))[-1].time() == CLOSE_TIME
+
+
+def test_browser_in_another_timezone_still_gets_taipei_hours():
+    # now expressed in UTC must not shift the window
+    utc_now = _dt(2026, 9, 24, 7, 0, tzinfo=_ZI("UTC"))   # = 15:00 Taipei
+    b = open_buckets(_DAY, utc_now)
+    assert b[0].time() == OPEN_TIME
+    assert b[-1].time().hour == 15

@@ -100,7 +100,10 @@ export default function App() {
         </p>
       )}
 
-      <h2>{isToday ? '今日' : date} 各時段人數</h2>
+      <h2>
+        {isToday ? '今日' : date} 各時段人數
+        {series && <span className="hours"> 營業時間 {series.open_from}–{series.open_to}</span>}
+      </h2>
       {series ? <OccupancyChart series={series} /> : <p className="empty">載入中…</p>}
       <p className="note">線段中斷表示該時段沒有採集到資料。</p>
     </main>

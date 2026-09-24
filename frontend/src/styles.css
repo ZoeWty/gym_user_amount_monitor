@@ -97,3 +97,5 @@ h2 { font-size: 1.1rem; margin: 32px 0 12px; }
 
 .updated, .note, .empty { color: var(--muted); font-size: 0.8rem; }
 .error { color: #dc2626; }
+
+.hours { font-size: 0.8rem; font-weight: 400; color: var(--muted); }

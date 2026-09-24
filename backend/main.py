@@ -17,6 +17,15 @@ from db import connect, init_schema
 
 TAIPEI = ZoneInfo("Asia/Taipei")
 BUCKET = timedelta(minutes=10)
+
+# Opening hours, Taipei local. Outside these the centres are shut and upstream
+# reports a literal 0, which is true but says nothing about how busy it gets --
+# and 14 hours of flat zeros squash the part of the chart you actually read.
+# Filtered on read, not on write: the rows stay in the table, so changing these
+# hours (or dropping the filter) needs no backfill.
+OPEN_TIME = time_cls(8, 0)
+CLOSE_TIME = time_cls(22, 0)
+OPEN_HOURS_SQL = "(ts AT TIME ZONE 'Asia/Taipei')::time BETWEEN %s AND %s"
 STATIC_DIR = Path(
     os.environ.get(
         "STATIC_DIR", Path(__file__).resolve().parent.parent / "frontend" / "dist"
@@ -49,6 +58,23 @@ def _bucket(ts):
     return local.replace(minute=local.minute // 10 * 10, second=0, microsecond=0)
 
 
+def open_buckets(day, now):
+    """The 10-minute buckets inside `day`'s opening hours, none later than now.
+
+    Returns [] for a day that has not opened yet, and the full window for any
+    day already past.
+    """
+    start = datetime.combine(day, OPEN_TIME, tzinfo=TAIPEI)
+    end = datetime.combine(day, CLOSE_TIME, tzinfo=TAIPEI)
+    last = end if now >= end else _bucket(now)
+
+    out, b = [], start
+    while b <= last:
+        out.append(b)
+        b += BUCKET
+    return out
+
+
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
@@ -66,8 +92,9 @@ def latest(venue: str | None = Query(None)):
     with connect() as conn:
         rows = conn.execute(
             "SELECT DISTINCT ON (area) area, ts, current, capacity "
-            "FROM occupancy WHERE venue = %s ORDER BY area, ts DESC",
-            (venue,),
+            "FROM occupancy WHERE venue = %s AND " + OPEN_HOURS_SQL +
+            " ORDER BY area, ts DESC",
+            (venue, OPEN_TIME, CLOSE_TIME),
         ).fetchall()
     return {
         "venue": venue,
@@ -111,26 +138,24 @@ def series(venue: str | None = Query(None), date: str | None = Query(None)):
         ]
         rows = conn.execute(
             "SELECT area, ts, current FROM occupancy "
-            "WHERE venue = %s AND ts >= %s AND ts < %s",
-            (venue, start, end),
+            "WHERE venue = %s AND ts >= %s AND ts < %s AND " + OPEN_HOURS_SQL,
+            (venue, start, end, OPEN_TIME, CLOSE_TIME),
         ).fetchall()
 
     seen = {(_bucket(ts), area): current for area, ts, current in rows}
 
-    # Don't emit buckets that haven't happened yet -- a trailing run of nulls
-    # for the rest of today is noise, not a gap.
-    now = datetime.now(TAIPEI)
-    stop = min(end, now + BUCKET) if start <= now < end else end
-
-    points, b = [], start
-    while b < stop:
-        points.append(
-            {"ts": b.isoformat(), **{a: seen.get((b, a)) for a in areas}}
-        )
-        b += BUCKET
-
-    return {"venue": venue, "date": day.isoformat(), "areas": areas,
-            "points": points}
+    points = [
+        {"ts": b.isoformat(), **{a: seen.get((b, a)) for a in areas}}
+        for b in open_buckets(day, datetime.now(TAIPEI))
+    ]
+    return {
+        "venue": venue,
+        "date": day.isoformat(),
+        "areas": areas,
+        "open_from": OPEN_TIME.isoformat(timespec="minutes"),
+        "open_to": CLOSE_TIME.isoformat(timespec="minutes"),
+        "points": points,
+    }
 
 
 # Mounted last so the /api and /healthz routes above take precedence.

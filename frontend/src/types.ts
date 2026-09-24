@@ -12,6 +12,9 @@ export type Series = {
   venue: string
   date: string
   areas: string[]
+  /** Opening hours the backend restricts the series to, e.g. "08:00". */
+  open_from: string
+  open_to: string
   points: SeriesPoint[]
 }
 
