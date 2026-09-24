@@ -58,6 +58,25 @@ def _bucket(ts):
     return local.replace(minute=local.minute // 10 * 10, second=0, microsecond=0)
 
 
+def drop_glitch_zeros(rows):
+    """Drop a 0 reading when another area at the same timestamp was busy.
+
+    Upstream occasionally substitutes a literal "0" for the real number --
+    seen on 2026-09-24, where 南港 swim went 17 -> 0 -> 31 in twenty minutes
+    while the gym alongside it held at ~35. Parsing cannot catch that: "0" is
+    a perfectly valid integer, so the poller's guard against unparseable
+    values lets it straight through.
+
+    A lone 0 next to a busy sibling is a glitch; every area reading 0 at once
+    is a genuinely empty venue, which does happen right at opening. Only the
+    first is dropped.
+
+    Rows are (area, ts, current, ...).
+    """
+    busy_at = {r[1] for r in rows if r[2] > 0}
+    return [r for r in rows if r[2] > 0 or r[1] not in busy_at]
+
+
 def open_buckets(day, now):
     """The 10-minute buckets inside `day`'s opening hours, none later than now.
 
@@ -90,18 +109,27 @@ def latest(venue: str | None = Query(None)):
     """Most recent reading per area for one venue."""
     venue = _resolve_venue(venue)
     with connect() as conn:
+        # Not DISTINCT ON: the glitch filter needs the siblings at each
+        # timestamp, so take a short window and pick the newest per area here.
+        # ponytail: 30 rows ~= 10 polls across 3 areas. If a venue ever
+        # reports more areas, raise it or switch to a window function.
         rows = conn.execute(
-            "SELECT DISTINCT ON (area) area, ts, current, capacity "
-            "FROM occupancy WHERE venue = %s AND " + OPEN_HOURS_SQL +
-            " ORDER BY area, ts DESC",
+            "SELECT area, ts, current, capacity FROM occupancy "
+            "WHERE venue = %s AND " + OPEN_HOURS_SQL +
+            " ORDER BY ts DESC LIMIT 30",
             (venue, OPEN_TIME, CLOSE_TIME),
         ).fetchall()
+
+    newest = {}
+    for area, ts, current, capacity in drop_glitch_zeros(rows):
+        newest.setdefault(area, {"current": current, "capacity": capacity, "ts": ts})
+    # Sorted so the cards keep a stable order; the rows arrive newest-first,
+    # which says nothing about area order.
+    areas = {a: newest[a] for a in sorted(newest)}
     return {
         "venue": venue,
-        "fetched_at": max((r[1] for r in rows), default=None),
-        "areas": {
-            r[0]: {"current": r[2], "capacity": r[3], "ts": r[1]} for r in rows
-        },
+        "fetched_at": max((a["ts"] for a in areas.values()), default=None),
+        "areas": areas,
     }
 
 
@@ -142,7 +170,10 @@ def series(venue: str | None = Query(None), date: str | None = Query(None)):
             (venue, start, end, OPEN_TIME, CLOSE_TIME),
         ).fetchall()
 
-    seen = {(_bucket(ts), area): current for area, ts, current in rows}
+    seen = {
+        (_bucket(ts), area): current
+        for area, ts, current in drop_glitch_zeros(rows)
+    }
 
     points = [
         {"ts": b.isoformat(), **{a: seen.get((b, a)) for a in areas}}

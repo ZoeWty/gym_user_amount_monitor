@@ -142,3 +142,45 @@ def test_browser_in_another_timezone_still_gets_taipei_hours():
     b = open_buckets(_DAY, utc_now)
     assert b[0].time() == OPEN_TIME
     assert b[-1].time().hour == 15
+
+
+# --- glitch zeros ----------------------------------------------------------
+
+from main import drop_glitch_zeros
+
+_T1, _T2 = 'ts1', 'ts2'
+
+
+def test_lone_zero_next_to_a_busy_area_is_dropped():
+    # the real 2026-09-24 case: swim reads 0 while the gym is at 35
+    rows = [('gym', _T1, 35), ('swim', _T1, 0)]
+    assert drop_glitch_zeros(rows) == [('gym', _T1, 35)]
+
+
+def test_all_areas_zero_is_kept():
+    # a genuinely empty venue, e.g. right at opening -- not a glitch
+    rows = [('gym', _T1, 0), ('swim', _T1, 0)]
+    assert drop_glitch_zeros(rows) == rows
+
+
+def test_zero_is_judged_per_timestamp_not_globally():
+    rows = [('gym', _T1, 0), ('swim', _T1, 0),     # empty venue, keep both
+            ('gym', _T2, 35), ('swim', _T2, 0)]    # glitch, drop the 0
+    assert drop_glitch_zeros(rows) == [
+        ('gym', _T1, 0), ('swim', _T1, 0), ('gym', _T2, 35)
+    ]
+
+
+def test_nonzero_rows_are_never_touched():
+    rows = [('gym', _T1, 35), ('swim', _T1, 17)]
+    assert drop_glitch_zeros(rows) == rows
+
+
+def test_extra_columns_are_preserved():
+    # /api/latest passes (area, ts, current, capacity)
+    rows = [('gym', _T1, 35, 100), ('swim', _T1, 0, 200)]
+    assert drop_glitch_zeros(rows) == [('gym', _T1, 35, 100)]
+
+
+def test_empty_input():
+    assert drop_glitch_zeros([]) == []

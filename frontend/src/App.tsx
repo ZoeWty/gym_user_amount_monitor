@@ -16,6 +16,12 @@ async function getJSON<T>(url: string): Promise<T> {
 // Upstream only refreshes once a minute, so polling faster gains nothing.
 const REFRESH_MS = 60_000
 
+// The poller runs every 10 minutes, so anything older than this means
+// collection has stopped -- a laptop asleep, a dead container, a network
+// outage. The number on the card stays plausible while going badly stale,
+// which is the failure worth shouting about.
+const STALE_MS = 15 * 60_000
+
 /**
  * Fetch `url` now, and while `live` is true keep it current two ways:
  * on a timer, and whenever the tab returns to the foreground.
@@ -70,6 +76,7 @@ export default function App() {
   const today = taipeiToday()
   const isToday = date === today
 
+
   useEffect(() => {
     getJSON<Venue[]>('/api/venues')
       .then((vs) => {
@@ -84,6 +91,11 @@ export default function App() {
     venue ? `/api/latest?venue=${venue}` : null, isToday, setError)
   const series = useLiveFetch<Series>(
     venue ? `/api/series?venue=${venue}&date=${date}` : null, isToday, setError)
+  // Recomputed on every render, and useLiveFetch re-renders once a minute
+  // whether the fetch succeeds or fails, so no separate ticker is needed.
+  const fetchedAt = latest?.fetched_at ? new Date(latest.fetched_at) : null
+  const age = fetchedAt ? Date.now() - fetchedAt.getTime() : 0
+  const staleMinutes = fetchedAt && age > STALE_MS ? Math.round(age / 60_000) : null
 
   return (
     <main>
@@ -120,11 +132,10 @@ export default function App() {
         ))}
       </section>
 
-      {latest?.fetched_at && (
-        <p className="updated">
-          最後更新 {new Date(latest.fetched_at).toLocaleString('zh-TW', {
-            timeZone: 'Asia/Taipei',
-          })}
+      {fetchedAt && (
+        <p className={staleMinutes === null ? 'updated' : 'updated stale'}>
+          最後更新 {fetchedAt.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })}
+          {staleMinutes !== null && ` ⚠ 已 ${staleMinutes} 分鐘沒有新資料，上方數字不是現在的狀況`}
         </p>
       )}
 

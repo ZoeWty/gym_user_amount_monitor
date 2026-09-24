@@ -99,3 +99,5 @@ h2 { font-size: 1.1rem; margin: 32px 0 12px; }
 .error { color: #dc2626; }
 
 .hours { font-size: 0.8rem; font-weight: 400; color: var(--muted); }
+
+.updated.stale { color: #f87171; font-weight: 600; }
