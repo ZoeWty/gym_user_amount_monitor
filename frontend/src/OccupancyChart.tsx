@@ -8,18 +8,20 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { colorFor, labelFor, type Series } from './types'
+import { areaLabel, useStrings } from './i18n'
+import { colorFor, type Series } from './types'
 
 const hhmm = (iso: string) => iso.slice(11, 16)
 
 export default function OccupancyChart({ series }: { series: Series }) {
+  const s = useStrings()
   // A day before collection started still comes back as a full grid of
   // null buckets, so emptiness means "no non-null value", not "no points".
   const hasData = series.points.some((p) =>
     series.areas.some((a) => p[a] !== null && p[a] !== undefined),
   )
   if (!hasData) {
-    return <p className="empty">這一天沒有任何資料。</p>
+    return <p className="empty">{s.noDataThatDay}</p>
   }
 
   return (
@@ -30,9 +32,9 @@ export default function OccupancyChart({ series }: { series: Series }) {
         <YAxis allowDecimals={false} fontSize={12} />
         <Tooltip
           labelFormatter={(v) => hhmm(String(v))}
-          formatter={(value, name) => [value as number, labelFor(String(name))]}
+          formatter={(value, name) => [value as number, areaLabel(s, String(name))]}
         />
-        <Legend formatter={(v) => labelFor(String(v))} />
+        <Legend formatter={(v) => areaLabel(s, String(v))} />
         {series.areas.map((area) => (
           <Line
             key={area}

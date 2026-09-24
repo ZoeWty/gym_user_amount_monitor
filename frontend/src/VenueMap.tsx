@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { labelFor, type Venue } from './types'
+import { areaLabel, useStrings, venueLabel } from './i18n'
+import type { Venue } from './types'
 
 /** Highest usage across a venue's areas, as a percentage, or null if unknown. */
 function busiest(v: Venue): number | null {
@@ -42,6 +43,7 @@ export default function VenueMap({ venues, selected, onSelect }: Props) {
   const layer = useRef<L.LayerGroup | null>(null)
   const [me, setMe] = useState<{ lat: number; lon: number } | null>(null)
   const [geoError, setGeoError] = useState<string | null>(null)
+  const s = useStrings()
 
   useEffect(() => {
     if (!host.current || map.current) return
@@ -77,13 +79,13 @@ export default function VenueMap({ venues, selected, onSelect }: Props) {
       })
 
       const lines = Object.entries(v.areas).map(
-        ([area, a]) => `${labelFor(area)} ${a.current}/${a.capacity}`,
+        ([area, a]) => `${areaLabel(s, area)} ${a.current}/${a.capacity}`,
       )
       if (me) {
-        lines.push(`距離約 ${distanceKm(me.lat, me.lon, v.lat!, v.lon!).toFixed(1)} km`)
+        lines.push(s.distanceAbout(distanceKm(me.lat, me.lon, v.lat!, v.lon!).toFixed(1)))
       }
       marker.bindTooltip(
-        `<b>${v.name}</b><br>${lines.join('<br>') || '目前沒有資料'}`,
+        `<b>${venueLabel(s, v.id, v.name)}</b><br>${lines.join('<br>') || s.noDataNow}`,
       )
       marker.on('click', () => onSelect(v.id))
       marker.addTo(layer.current!)
@@ -97,15 +99,15 @@ export default function VenueMap({ venues, selected, onSelect }: Props) {
         fillColor: '#2563eb',
         fillOpacity: 0.5,
       })
-        .bindTooltip('你的位置')
+        .bindTooltip(s.yourLocation)
         .addTo(layer.current)
     }
-  }, [venues, selected, me, onSelect])
+  }, [venues, selected, me, onSelect, s])
 
   const locate = () => {
     setGeoError(null)
     if (!navigator.geolocation) {
-      setGeoError('這個瀏覽器不支援定位')
+      setGeoError(s.geoUnsupported)
       return
     }
     navigator.geolocation.getCurrentPosition(
@@ -117,8 +119,8 @@ export default function VenueMap({ venues, selected, onSelect }: Props) {
       // this fires on a plain-HTTP deployment as well as on a refusal.
       (err) => setGeoError(
         err.code === err.PERMISSION_DENIED
-          ? '已拒絕定位，地圖顯示全部場館'
-          : `無法取得位置：${err.message}`,
+          ? s.geoDenied
+          : s.geoFailed(err.message),
       ),
       { timeout: 10_000 },
     )
@@ -135,26 +137,26 @@ export default function VenueMap({ venues, selected, onSelect }: Props) {
   return (
     <>
       <h2>
-        場館地圖
-        <span className="hours"> 綠 &lt;34% · 黃 &lt;67% · 紅 較擁擠</span>
+        {s.mapHeading}
+        <span className="hours"> {s.mapLegend}</span>
       </h2>
 
       <div className="map-controls">
-        <button onClick={locate}>{me ? '重新定位' : '使用我的位置'}</button>
+        <button onClick={locate}>{me ? s.relocate : s.useMyLocation}</button>
         {geoError && <span className="map-note error">{geoError}</span>}
-        {me && <span className="map-note">位置只留在這台裝置，不會送到後端</span>}
+        {me && <span className="map-note">{s.locationStaysHere}</span>}
       </div>
 
       <div ref={host} className="map" />
 
       {nearest.length > 0 && (
         <p className="map-note">
-          離你最近：
+          {s.nearestToYou}
           {nearest.map(({ v, km }, i) => (
             <span key={v.id}>
               {i > 0 && '、'}
               <button className="linklike" onClick={() => onSelect(v.id)}>
-                {v.name}
+                {venueLabel(s, v.id, v.name)}
               </button>{' '}
               {km.toFixed(1)} km
             </span>

@@ -148,3 +148,31 @@ h2 { font-size: 1.1rem; margin: 32px 0 12px; }
   border: 1px solid var(--border);
 }
 .leaflet-tooltip::before { border-top-color: var(--border); }
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.topbar h1 { margin: 0; }
+
+.lang select {
+  font-size: 0.9rem;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--fg);
+}
+
+/* Visible to screen readers only */
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

@@ -1,4 +1,8 @@
 import { useEffect, useState } from 'react'
+import {
+  LANGS, LangContext, initialLang, rememberLang, useStrings, venueLabel,
+  type Lang,
+} from './i18n'
 import OccupancyChart from './OccupancyChart'
 import StatCard from './StatCard'
 import VenueMap from './VenueMap'
@@ -69,6 +73,22 @@ function useLiveFetch<T>(
 }
 
 export default function App() {
+  const [lang, setLang] = useState<Lang>(initialLang)
+
+  const pick = (next: Lang) => {
+    setLang(next)
+    rememberLang(next)
+  }
+
+  return (
+    <LangContext.Provider value={lang}>
+      <Dashboard lang={lang} onLang={pick} />
+    </LangContext.Provider>
+  )
+}
+
+function Dashboard({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
+  const s = useStrings()
   const [venues, setVenues] = useState<Venue[]>([])
   const [venue, setVenue] = useState<string>('')
   const [date, setDate] = useState<string>(taipeiToday())
@@ -76,6 +96,12 @@ export default function App() {
 
   const today = taipeiToday()
   const isToday = date === today
+
+  // The tab title and the document language have to follow the picker too.
+  useEffect(() => {
+    document.title = s.title
+    document.documentElement.lang = s.htmlLang
+  }, [s])
 
 
   useEffect(() => {
@@ -100,19 +126,33 @@ export default function App() {
 
   return (
     <main>
-      <h1>運動中心人數監控</h1>
+      <header className="topbar">
+        <h1>{s.title}</h1>
+        <label className="lang">
+          <span className="sr-only">{s.language}</span>
+          <select
+            value={lang}
+            onChange={(e) => onLang(e.target.value as Lang)}
+            aria-label={s.language}
+          >
+            {Object.entries(LANGS).map(([code, label]) => (
+              <option key={code} value={code}>{label}</option>
+            ))}
+          </select>
+        </label>
+      </header>
 
       <div className="controls">
         <label>
-          場館
+          {s.venue}
           <select value={venue} onChange={(e) => setVenue(e.target.value)}>
             {venues.map((v) => (
-              <option key={v.id} value={v.id}>{v.name}</option>
+              <option key={v.id} value={v.id}>{venueLabel(s, v.id, v.name)}</option>
             ))}
           </select>
         </label>
         <label>
-          日期
+          {s.date}
           <input
             type="date"
             value={date}
@@ -121,11 +161,11 @@ export default function App() {
           />
         </label>
         {!isToday && (
-          <button onClick={() => setDate(today)}>回到今天</button>
+          <button onClick={() => setDate(today)}>{s.backToToday}</button>
         )}
       </div>
 
-      {error && <p className="error">讀取失敗：{error}</p>}
+      {error && <p className="error">{s.loadFailed(error)}</p>}
 
       <section className="cards">
         {latest && Object.entries(latest.areas).map(([area, v]) => (
@@ -135,17 +175,21 @@ export default function App() {
 
       {fetchedAt && (
         <p className={staleMinutes === null ? 'updated' : 'updated stale'}>
-          最後更新 {fetchedAt.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })}
-          {staleMinutes !== null && ` ⚠ 已 ${staleMinutes} 分鐘沒有新資料，上方數字不是現在的狀況`}
+          {s.lastUpdated(
+            fetchedAt.toLocaleString(s.locale, { timeZone: 'Asia/Taipei' }),
+          )}
+          {staleMinutes !== null && s.stale(staleMinutes)}
         </p>
       )}
 
       <h2>
-        {isToday ? '今日' : date} 各時段人數
-        {series && <span className="hours"> 營業時間 {series.open_from}–{series.open_to}</span>}
+        {s.chartHeading(isToday ? s.today : date)}
+        {series && (
+          <span className="hours">{s.openHours(series.open_from, series.open_to)}</span>
+        )}
       </h2>
-      {series ? <OccupancyChart series={series} /> : <p className="empty">載入中…</p>}
-      <p className="note">線段中斷表示該時段沒有採集到資料。</p>
+      {series ? <OccupancyChart series={series} /> : <p className="empty">{s.loading}</p>}
+      <p className="note">{s.gapNote}</p>
 
       {venues.length > 0 && (
         <VenueMap venues={venues} selected={venue} onSelect={setVenue} />

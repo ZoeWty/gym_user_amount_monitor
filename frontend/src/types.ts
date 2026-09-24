@@ -25,18 +25,10 @@ export type Series = {
   points: SeriesPoint[]
 }
 
-/** Upstream area keys are stable; anything unknown falls back to its raw id. */
-export const AREA_LABEL: Record<string, string> = {
-  gym: '健身房',
-  swim: '游泳池',
-  ice: '冰宮',
-}
-
 export const AREA_COLOR: Record<string, string> = {
   gym: '#2563eb',
   swim: '#0d9488',
   ice: '#c026d3',
 }
 
-export const labelFor = (area: string) => AREA_LABEL[area] ?? area
 export const colorFor = (area: string) => AREA_COLOR[area] ?? '#64748b'
