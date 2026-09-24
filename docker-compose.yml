@@ -11,6 +11,9 @@ services:
       - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    # Without this the database does not come back after a reboot, and the
+    # api and poller restart-loop against a host that is not there.
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U gym -d gym"]
       interval: 5s

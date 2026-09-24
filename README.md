@@ -75,6 +75,29 @@ curl -s https://<子網域>.cyc.org.tw/api
 過濾是在**讀取時**做的，不是寫入時：非營業時間的資料列照常存進資料庫。
 所以要改時間、或要看回夜間資料，改常數就好，不需要回填。
 
+## 本機常駐部署
+
+```bash
+docker compose up -d --build
+```
+
+**`--build` 不能省。** 沒有它，Compose 會沿用舊 image，程式改了卻不生效，
+而容器狀態照樣顯示 `Up` —— 沒有任何錯誤訊息告訴你在跑舊程式碼。
+確認容器裡真的是新程式：
+
+```bash
+docker compose exec -T poller grep -c "def parse_aggregate" poll.py
+```
+
+三個服務都設了 `restart: unless-stopped`，所以容器崩潰或 Docker 重啟後會自己回來。
+資料放在具名 volume，`docker compose down` 不會刪。已實測：down 再 up，316 列一列沒少。
+
+**還缺一步，要你自己點：** Docker Desktop 的
+Settings → General → **Start Docker Desktop when you sign in** 打勾。
+沒打勾的話，Mac 重開機後 Docker 本身不會啟動，`restart: unless-stopped` 也就無從生效。
+
+想確認重開機後真的活著，重開一次再跑 `./check.sh`。
+
 ## 筆電睡眠 = 資料斷掉
 
 macOS 睡眠會把整個 Docker 虛擬機一起凍結，容器裡的 `time.sleep()` 不會前進。
