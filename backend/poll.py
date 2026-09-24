@@ -134,14 +134,34 @@ def main():
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s"
     )
-    init_schema()
-
     if args.loop is None:
+        init_schema()
         poll_once()
         return
+
     while True:
-        poll_once()
-        time.sleep(args.loop)
+        try:
+            # Inside the guard, and every cycle: CREATE TABLE IF NOT EXISTS is
+            # cheap and idempotent, and running it here means the poller heals
+            # itself once the database comes back instead of having died at
+            # startup because it was not up yet.
+            init_schema()
+            wrote = poll_once()
+        except Exception:
+            # The loop has to outlive any single failure. poll_once() guards
+            # the fetch but not the database write, so a Postgres blip -- which
+            # is exactly what a laptop resuming from sleep produces -- would
+            # otherwise escape, end the loop and stop collection silently.
+            log.exception("poll cycle failed")
+            wrote = 0
+
+        # A cycle that stored nothing is usually a transient (DNS not back up
+        # yet after a resume), so come back in a minute instead of losing the
+        # whole interval.
+        # ponytail: flat 60s, no exponential backoff. Even in a sustained
+        # outage that is one request per venue per minute -- still lighter
+        # than the upstream site's own page, which polls every 60s per tab.
+        time.sleep(60 if wrote == 0 else args.loop)
 
 
 if __name__ == "__main__":
