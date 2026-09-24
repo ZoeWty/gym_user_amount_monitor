@@ -70,8 +70,47 @@ def parse(payload):
     return rows
 
 
-def fetch(url, client):
-    resp = client.get(url, headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT)
+AGGREGATE_FIELDS = (
+    ("gym", "gymPeopleNum", "gymMaxPeopleNum"),
+    ("swim", "swPeopleNum", "swMaxPeopleNum"),
+)
+
+
+def parse_aggregate(payload):
+    """Turn the all-venues payload into [(venue, name, area, cur, cap), ...].
+
+    Same rule as parse(): anything that will not convert to an integer is
+    dropped rather than recorded as 0.
+    """
+    if not isinstance(payload, dict):
+        log.warning("aggregate payload is not an object: %r", payload)
+        return []
+    rows = []
+    for v in payload.get("locationPeopleNums") or []:
+        if not isinstance(v, dict) or not v.get("LID"):
+            log.warning("aggregate entry has no LID: %r", v)
+            continue
+        venue = str(v["LID"]).lower()
+        name = v.get("lidName") or venue
+        for area, cur_key, cap_key in AGGREGATE_FIELDS:
+            try:
+                current, capacity = int(v[cur_key]), int(v[cap_key])
+            except (KeyError, TypeError, ValueError):
+                log.warning("venue=%s area=%s unusable: %r", venue, area, v)
+                continue
+            rows.append((venue, name, area, current, capacity))
+    return rows
+
+
+def fetch(url, client, post=False):
+    # The aggregate endpoint answers 411 without a Content-Length, so the POST
+    # needs an explicit (empty) body.
+    resp = (
+        client.post(url, content=b"", headers={"User-Agent": USER_AGENT},
+                    timeout=TIMEOUT)
+        if post else
+        client.get(url, headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT)
+    )
     resp.raise_for_status()
     return resp.json()
 
@@ -79,43 +118,54 @@ def fetch(url, client):
 def poll_once():
     """Fetch and store one sample for every venue. Returns rows written."""
     ts = datetime.now(timezone.utc)
+    cfg = venue_config.load()
     rows = []
 
-    # ponytail: venues are fetched sequentially. At ~1s each this stays well
-    # inside the 10-minute window up to ~100 venues; switch to asyncio.gather
-    # with a semaphore if the list ever gets that long.
     with httpx.Client(verify=SSL_CONTEXT) as client:
-        for venue in venue_config.load():
-            try:
-                payload = fetch(venue["url"], client)
-            except Exception as exc:
-                # Deliberately broad, and per-venue: one unreachable site must
-                # not stop the others from being recorded. No retry -- the next
-                # tick is 10 minutes away and hammering a free service is rude.
-                log.error("venue=%s fetch failed: %s", venue["id"], exc)
-                continue
+        # One call covers all twelve venues. Each source gets its own guard:
+        # the aggregate failing costs every venue's gym and pool, an extra
+        # source failing costs only that venue's extra areas.
+        try:
+            for venue, name, area, cur, cap in parse_aggregate(
+                fetch(cfg["aggregate"], client, post=True)
+            ):
+                rows.append((venue, name, area, ts, cur, cap))
+        except Exception as exc:
+            # No retry -- the next tick is 10 minutes away and hammering a free
+            # service is rude.
+            log.error("aggregate fetch failed: %s", exc)
 
-            venue_rows = parse(payload)
-            if not venue_rows:
-                log.error(
-                    "venue=%s no usable rows in %r -- writing nothing",
-                    venue["id"], payload,
-                )
+        for src in cfg.get("extra", []):
+            try:
+                payload = fetch(src["url"], client)
+            except Exception as exc:
+                log.error("venue=%s extra fetch failed: %s", src["venue"], exc)
                 continue
-            rows += [(venue["id"], a, ts, c, cap) for a, c, cap in venue_rows]
-            log.info(
-                "venue=%s %s", venue["id"],
-                " ".join(f"{a}={c}/{cap}" for a, c, cap in venue_rows),
-            )
+            wanted = set(src["areas"])
+            # Take only the declared areas. This source also reports gym and
+            # swim, and storing those would duplicate the aggregate's rows.
+            extra = [r for r in parse(payload) if r[0] in wanted]
+            if not extra:
+                log.error("venue=%s no usable extra areas in %r",
+                          src["venue"], payload)
+                continue
+            rows += [(src["venue"], None, a, ts, c, cap) for a, c, cap in extra]
+
+    if rows:
+        by_venue = {}
+        for venue, _name, area, _ts, cur, cap in rows:
+            by_venue.setdefault(venue, []).append(f"{area}={cur}/{cap}")
+        log.info("%d venues: %s", len(by_venue),
+                 "  ".join(f"{v} {' '.join(a)}" for v, a in sorted(by_venue.items())))
 
     if not rows:
-        log.error("nothing usable from any venue -- writing nothing")
+        log.error("nothing usable from any source -- writing nothing")
         return 0
 
     with connect() as conn:
         conn.cursor().executemany(
-            "INSERT INTO occupancy (venue, area, ts, current, capacity) "
-            "VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+            "INSERT INTO occupancy (venue, name, area, ts, current, capacity) "
+            "VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
             rows,
         )
     log.info("stored %d rows", len(rows))

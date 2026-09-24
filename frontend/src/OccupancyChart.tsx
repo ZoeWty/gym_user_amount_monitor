@@ -40,7 +40,10 @@ export default function OccupancyChart({ series }: { series: Series }) {
             dataKey={area}
             stroke={colorFor(area)}
             strokeWidth={2}
-            dot={false}
+            /* A run of one -- a venue on its first poll, or a reading
+               between two gaps -- draws no line segment, so without a dot it
+               is invisible. Small enough not to clutter a full day. */
+            dot={{ r: 1.5 }}
             /* Gaps must render as gaps. Connecting across missing buckets
                would draw a line that describes data we never collected. */
             connectNulls={false}

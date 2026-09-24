@@ -42,11 +42,30 @@ async def lifespan(app):
 app = FastAPI(title="Gym Monitor", lifespan=lifespan)
 
 
+def _known_venues():
+    """[(id, name), ...] for venues that have data, newest name per venue.
+
+    Read from the table rather than from config: the registry is upstream now,
+    and a venue nobody has collected yet should not be selectable.
+    """
+    with connect() as conn:
+        return conn.execute(
+            # NULLS LAST matters: extra sources (文山's ice rink) write no
+            # name and share the aggregate's timestamp, so without it the
+            # nameless row can win and the venue shows up as its own id.
+            "SELECT DISTINCT ON (venue) venue, name FROM occupancy "
+            "ORDER BY venue, ts DESC, name NULLS LAST"
+        ).fetchall()
+
+
 def _resolve_venue(venue):
-    """Validate the venue id against the registry. Unknown id -> 404."""
-    known = venue_config.ids()
+    """Validate the venue id against collected data. Unknown id -> 404."""
+    known = [v for v, _ in _known_venues()]
+    if not known:
+        raise HTTPException(503, "no data collected yet")
     if venue is None:
-        return known[0]
+        default = venue_config.load().get("default")
+        return default if default in known else known[0]
     if venue not in known:
         raise HTTPException(404, f"unknown venue {venue!r}; known: {known}")
     return venue
@@ -58,23 +77,25 @@ def _bucket(ts):
     return local.replace(minute=local.minute // 10 * 10, second=0, microsecond=0)
 
 
-def drop_glitch_zeros(rows):
-    """Drop a 0 reading when another area at the same timestamp was busy.
+def drop_implausible(rows):
+    """Drop readings upstream cannot actually mean. Rows are (area, ts, current, capacity).
 
-    Upstream occasionally substitutes a literal "0" for the real number --
-    seen on 2026-09-24, where 南港 swim went 17 -> 0 -> 31 in twenty minutes
-    while the gym alongside it held at ~35. Parsing cannot catch that: "0" is
-    a perfectly valid integer, so the poller's guard against unparseable
-    values lets it straight through.
+    Two rules, both seen in real data on 2026-09-24:
 
-    A lone 0 next to a busy sibling is a glitch; every area reading 0 at once
-    is a genuinely empty venue, which does happen right at opening. Only the
-    first is dropped.
+    * `current > capacity` -- 北投 reported 974 then 996 swimmers against a
+      capacity of 200, which looks like a running admission count rather than
+      how many people are in the water.
+    * a lone 0 while another area shares its timestamp and is busy -- 南港 swim
+      read 17 -> 0 -> 31 in twenty minutes while the gym beside it held at ~35.
+      Every area reading 0 at once is a genuinely empty venue, which happens at
+      opening, and is kept.
 
-    Rows are (area, ts, current, ...).
+    Parsing cannot catch either: both are valid integers. Applied on read, so
+    the rows stay in the table and the rules can change without a backfill.
     """
-    busy_at = {r[1] for r in rows if r[2] > 0}
-    return [r for r in rows if r[2] > 0 or r[1] not in busy_at]
+    kept = [r for r in rows if r[3] is None or r[2] <= r[3]]
+    busy_at = {r[1] for r in kept if r[2] > 0}
+    return [r for r in kept if r[2] > 0 or r[1] not in busy_at]
 
 
 def open_buckets(day, now):
@@ -101,7 +122,11 @@ def healthz():
 
 @app.get("/api/venues")
 def list_venues():
-    return [{"id": v["id"], "name": v["name"]} for v in venue_config.load()]
+    """Venues with data, configured default first (the UI selects the first)."""
+    default = venue_config.load().get("default")
+    rows = [{"id": v, "name": n or v} for v, n in _known_venues()]
+    rows.sort(key=lambda r: (r["id"] != default, r["id"]))
+    return rows
 
 
 @app.get("/api/latest")
@@ -121,7 +146,7 @@ def latest(venue: str | None = Query(None)):
         ).fetchall()
 
     newest = {}
-    for area, ts, current, capacity in drop_glitch_zeros(rows):
+    for area, ts, current, capacity in drop_implausible(rows):
         newest.setdefault(area, {"current": current, "capacity": capacity, "ts": ts})
     # Sorted so the cards keep a stable order; the rows arrive newest-first,
     # which says nothing about area order.
@@ -165,14 +190,14 @@ def series(venue: str | None = Query(None), date: str | None = Query(None)):
             ).fetchall()
         ]
         rows = conn.execute(
-            "SELECT area, ts, current FROM occupancy "
+            "SELECT area, ts, current, capacity FROM occupancy "
             "WHERE venue = %s AND ts >= %s AND ts < %s AND " + OPEN_HOURS_SQL,
             (venue, start, end, OPEN_TIME, CLOSE_TIME),
         ).fetchall()
 
     seen = {
         (_bucket(ts), area): current
-        for area, ts, current in drop_glitch_zeros(rows)
+        for area, ts, current, _cap in drop_implausible(rows)
     }
 
     points = [

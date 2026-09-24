@@ -15,6 +15,12 @@ DATABASE_URL = os.environ.get(
 # Same amount of code, and it absorbs both new venues and venues with a
 # different mix of facilities (文山 also reports an ice rink) without DDL.
 #
+# `name` is the venue's display name, carried on every row rather than kept in
+# a second table: the poller already has it, so there is nothing to join and
+# nothing to keep in sync. It repeats, which costs a few MB a year.
+# ponytail: denormalised, and /api/venues seq-scans to recover the distinct
+# set. Give it its own table if that query ever shows up as slow.
+#
 # PK order is (venue, area, ts), not (ts, venue, area): every read filters on a
 # single venue and then scans a time range, so venue must lead for the index to
 # do the work. It also makes writes idempotent -- a double-fired k8s CronJob or
@@ -28,6 +34,7 @@ CREATE TABLE IF NOT EXISTS occupancy (
     capacity  integer     NOT NULL,
     PRIMARY KEY (venue, area, ts)
 );
+ALTER TABLE occupancy ADD COLUMN IF NOT EXISTS name text;
 """
 
 

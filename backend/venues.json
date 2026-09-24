@@ -1,5 +1,7 @@
-[
-  {"id": "ngsc", "name": "南港運動中心", "url": "https://ngsc.cyc.org.tw/api"},
-  {"id": "nhsc", "name": "內湖運動中心", "url": "https://nhsc.cyc.org.tw/api"},
-  {"id": "wssc", "name": "文山運動中心", "url": "https://wssc.cyc.org.tw/api"}
-]
+{
+  "aggregate": "https://booking-tpsc.sporetrofit.com/Home/loadLocationPeopleNum",
+  "default": "ngsc",
+  "extra": [
+    {"venue": "wssc", "url": "https://wssc.cyc.org.tw/api", "areas": ["ice"]}
+  ]
+}
