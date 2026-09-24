@@ -1,4 +1,11 @@
-export type Venue = { id: string; name: string }
+export type Venue = {
+  id: string
+  name: string
+  /** null when the venue has no coordinates in venues.json */
+  lat: number | null
+  lon: number | null
+  areas: Record<string, { current: number; capacity: number }>
+}
 
 export type Latest = {
   venue: string

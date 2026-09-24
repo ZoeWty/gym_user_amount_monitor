@@ -2,6 +2,62 @@
   "aggregate": "https://booking-tpsc.sporetrofit.com/Home/loadLocationPeopleNum",
   "default": "ngsc",
   "extra": [
-    {"venue": "wssc", "url": "https://wssc.cyc.org.tw/api", "areas": ["ice"]}
-  ]
+    {
+      "venue": "wssc",
+      "url": "https://wssc.cyc.org.tw/api",
+      "areas": [
+        "ice"
+      ]
+    }
+  ],
+  "coords": {
+    "btsc": [
+      25.11666,
+      121.50962
+    ],
+    "dasc": [
+      25.02073,
+      121.546009
+    ],
+    "dtsc": [
+      25.065286,
+      121.516364
+    ],
+    "jjsc": [
+      25.03786,
+      121.51985
+    ],
+    "ngsc": [
+      25.048904,
+      121.58189
+    ],
+    "nhsc": [
+      25.077235,
+      121.575365
+    ],
+    "slsc": [
+      25.08941,
+      121.521498
+    ],
+    "sssc": [
+      25.048765,
+      121.550294
+    ],
+    "whsc": [
+      25.047431,
+      121.506567
+    ],
+    "wssc": [
+      24.996944,
+      121.559359
+    ],
+    "xysc": [
+      25.031701,
+      121.566767
+    ],
+    "zssc": [
+      25.054861,
+      121.521387
+    ]
+  }
 }

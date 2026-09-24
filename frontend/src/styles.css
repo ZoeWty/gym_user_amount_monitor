@@ -101,3 +101,50 @@ h2 { font-size: 1.1rem; margin: 32px 0 12px; }
 .hours { font-size: 0.8rem; font-weight: 400; color: var(--muted); }
 
 .updated.stale { color: #f87171; font-weight: 600; }
+
+.map {
+  height: 380px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  /* Leaflet panes sit above sticky page chrome without this */
+  z-index: 0;
+}
+
+.map-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.map-controls button {
+  font-size: 0.9rem;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.map-note { font-size: 0.8rem; color: var(--muted); }
+.map-note.error { color: #f87171; }
+
+.linklike {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--fg);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Leaflet's own popups/tooltips default to light; match the page instead */
+.leaflet-tooltip {
+  background: var(--card);
+  color: var(--fg);
+  border: 1px solid var(--border);
+}
+.leaflet-tooltip::before { border-top-color: var(--border); }

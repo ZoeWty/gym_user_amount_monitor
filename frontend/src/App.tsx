@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import OccupancyChart from './OccupancyChart'
 import StatCard from './StatCard'
+import VenueMap from './VenueMap'
 import type { Latest, Series, Venue } from './types'
 
 /** Today's date in Taipei, as YYYY-MM-DD, regardless of the browser's zone. */
@@ -145,6 +146,10 @@ export default function App() {
       </h2>
       {series ? <OccupancyChart series={series} /> : <p className="empty">載入中…</p>}
       <p className="note">線段中斷表示該時段沒有採集到資料。</p>
+
+      {venues.length > 0 && (
+        <VenueMap venues={venues} selected={venue} onSelect={setVenue} />
+      )}
     </main>
   )
 }

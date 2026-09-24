@@ -122,11 +122,46 @@ def healthz():
 
 @app.get("/api/venues")
 def list_venues():
-    """Venues with data, configured default first (the UI selects the first)."""
-    default = venue_config.load().get("default")
-    rows = [{"id": v, "name": n or v} for v, n in _known_venues()]
-    rows.sort(key=lambda r: (r["id"] != default, r["id"]))
-    return rows
+    """Every venue with data: name, coordinates, and its latest reading.
+
+    One query instead of twelve round trips -- the map needs all of them at
+    once, and so will /api/recommend later.
+    """
+    cfg = venue_config.load()
+    coords = cfg.get("coords", {})
+
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT ON (venue, area) venue, area, ts, current, capacity "
+            "FROM occupancy WHERE " + OPEN_HOURS_SQL +
+            " ORDER BY venue, area, ts DESC",
+            (OPEN_TIME, CLOSE_TIME),
+        ).fetchall()
+
+    # Filter per venue, never across venues. drop_implausible groups by
+    # timestamp, and every venue shares a poll cycle's timestamp -- run it on
+    # the whole set and a busy gym at 南港 would vouch for a 0 at 信義.
+    per_venue = {}
+    for venue, area, ts, current, capacity in rows:
+        per_venue.setdefault(venue, []).append((area, ts, current, capacity))
+
+    out = []
+    for venue, name in _known_venues():
+        lat_lon = coords.get(venue)
+        out.append({
+            "id": venue,
+            "name": name or venue,
+            "lat": lat_lon[0] if lat_lon else None,
+            "lon": lat_lon[1] if lat_lon else None,
+            "areas": {
+                a: {"current": c, "capacity": cap}
+                for a, _ts, c, cap in drop_implausible(per_venue.get(venue, []))
+            },
+        })
+
+    default = cfg.get("default")
+    out.sort(key=lambda r: (r["id"] != default, r["id"]))
+    return out
 
 
 @app.get("/api/latest")
