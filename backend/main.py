@@ -4,8 +4,9 @@ Every endpoint is a GET and nothing here mutates state, which is what keeps
 the public-facing blast radius small (see the design doc, §7).
 """
 import os
+from math import asin, cos, radians, sin, sqrt
 from contextlib import asynccontextmanager
-from datetime import date as date_cls, datetime, time as time_cls, timedelta
+from datetime import date as date_cls, datetime, time as time_cls, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -39,7 +40,19 @@ async def lifespan(app):
     yield
 
 
-app = FastAPI(title="Gym Monitor", lifespan=lifespan)
+# Dify (and any other OpenAPI tool importer) needs an absolute base URL in the
+# spec. From inside a Dify container, localhost is that container -- the host is
+# host.docker.internal, which is why that is the default rather than
+# http://localhost:8000. Set PUBLIC_BASE_URL to the tunnel hostname in the cloud.
+PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "http://host.docker.internal:8000")
+
+app = FastAPI(
+    title="Gym Monitor",
+    description="Live occupancy for Taipei's twelve public sports centres.",
+    version="1.0.0",
+    lifespan=lifespan,
+    servers=[{"url": PUBLIC_BASE_URL}],
+)
 
 
 def _known_venues():
@@ -113,6 +126,64 @@ def open_buckets(day, now):
         out.append(b)
         b += BUCKET
     return out
+
+
+def rank_venues(venues, area, near=None, max_km=None):
+    """Rank venues for one activity, emptiest first. Pure, so it is testable.
+
+    `venues` are the dicts /api/venues returns. `near` is a venue id to measure
+    distance from -- a coarse stand-in for "where the user is" that keeps GPS
+    coordinates out of the request entirely.
+
+    Two exclusions, both deliberate:
+
+    * A venue that does not report this area at all (北投's pool reads over
+      capacity and is filtered upstream, so it simply is not offered).
+    * A venue whose every area reads 0 during opening hours. 信義 did exactly
+      that at weekday noon. It may be genuinely empty, and the chart keeps it
+      for that reason, but a recommendation carries a stronger claim: sending
+      someone to a centre that might be shut is the worst outcome this can
+      produce, so 0% never wins by default.
+
+    Distance never reorders the list. There is no defensible exchange rate
+    between "5% emptier" and "2km further", so `max_km` makes that cut-off the
+    caller's explicit choice instead of a constant invented here.
+    """
+    origin = next((v for v in venues if v["id"] == near), None) if near else None
+
+    out = []
+    for v in venues:
+        stats = v["areas"].get(area)
+        if not stats or not stats["capacity"]:
+            continue
+        if all(a["current"] == 0 for a in v["areas"].values()):
+            continue
+
+        km = None
+        if origin and origin.get("lat") is not None and v.get("lat") is not None:
+            km = round(_haversine_km(origin["lat"], origin["lon"], v["lat"], v["lon"]), 1)
+            if max_km is not None and km > max_km:
+                continue
+
+        out.append({
+            "id": v["id"],
+            "name": v["name"],
+            "current": stats["current"],
+            "capacity": stats["capacity"],
+            "usage_pct": round(stats["current"] / stats["capacity"] * 100),
+            "distance_km": km,
+        })
+
+    out.sort(key=lambda r: (r["usage_pct"], r["distance_km"] if r["distance_km"] is not None else 0))
+    return out
+
+
+def _haversine_km(lat1, lon1, lat2, lon2):
+    r = 6371
+    p1, p2 = radians(lat1), radians(lat2)
+    dp, dl = radians(lat2 - lat1), radians(lon2 - lon1)
+    h = sin(dp / 2) ** 2 + cos(p1) * cos(p2) * sin(dl / 2) ** 2
+    return 2 * r * asin(sqrt(h))
 
 
 @app.get("/healthz")
@@ -246,6 +317,53 @@ def series(venue: str | None = Query(None), date: str | None = Query(None)):
         "open_from": OPEN_TIME.isoformat(timespec="minutes"),
         "open_to": CLOSE_TIME.isoformat(timespec="minutes"),
         "points": points,
+    }
+
+
+@app.get(
+    "/api/recommend",
+    operation_id="recommendVenue",
+    summary="Recommend the least crowded sports centre for an activity",
+    description=(
+        "Returns Taipei sports centres that currently offer the given activity, "
+        "emptiest first. Pass `near` (a venue id) to include the distance from "
+        "that venue, and `max_km` to only consider venues within that distance. "
+        "Venues reporting zero across every area during opening hours are "
+        "excluded, because they are more likely closed than empty."
+    ),
+)
+def recommend(
+    area: str = Query("gym", description="Activity: gym, swim, or ice"),
+    near: str | None = Query(
+        None, description="Venue id to measure distance from, e.g. xysc for 信義"
+    ),
+    max_km: float | None = Query(
+        None, gt=0, description="Only include venues within this many km of `near`"
+    ),
+    limit: int = Query(3, ge=1, le=12, description="How many venues to return"),
+):
+    venues = list_venues()
+    known = {v["id"] for v in venues}
+    if near is not None and near not in known:
+        raise HTTPException(404, f"unknown venue {near!r}; known: {sorted(known)}")
+
+    ranked = rank_venues(venues, area, near=near, max_km=max_km)
+    origin = next((v for v in venues if v["id"] == near), None)
+
+    # A caller acting on this needs to know how old it is. "20% full" from nine
+    # hours ago is worse than no answer, and that is the laptop-asleep case.
+    with connect() as conn:
+        as_of = conn.execute("SELECT max(ts) FROM occupancy").fetchone()[0]
+
+    return {
+        "area": area,
+        "as_of": as_of,
+        "stale_minutes": (
+            round((datetime.now(timezone.utc) - as_of).total_seconds() / 60)
+            if as_of else None
+        ),
+        "near": {"id": origin["id"], "name": origin["name"]} if origin else None,
+        "results": ranked[:limit],
     }
 
 

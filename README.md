@@ -98,6 +98,10 @@ Settings → General → **Start Docker Desktop when you sign in** 打勾。
 
 想確認重開機後真的活著，重開一次再跑 `./check.sh`。
 
+## Dify chatbot
+
+見 [DIFY.md](DIFY.md)。排序在後端算，LLM 只負責問問題和轉述。
+
 ## 雲端部署
 
 見 [DEPLOY.md](DEPLOY.md)。筆電會睡，雲端不會 —— 缺掉的早上補不回來。

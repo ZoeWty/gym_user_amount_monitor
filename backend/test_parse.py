@@ -249,3 +249,62 @@ def test_nonzero_rows_are_never_touched():
 
 def test_empty_input():
     assert drop_implausible([]) == []
+
+
+# --- recommendation ranking -----------------------------------------------
+
+from main import rank_venues
+
+def _v(vid, lat, lon, **areas):
+    return {"id": vid, "name": vid.upper(), "lat": lat, "lon": lon,
+            "areas": {k: {"current": c, "capacity": cap}
+                      for k, (c, cap) in areas.items()}}
+
+# 信義 and 南港 are ~5km apart; exact positions do not matter, only the order
+_XYSC = _v("xysc", 25.0317, 121.5668, gym=(0, 65), swim=(0, 165))
+_NGSC = _v("ngsc", 25.0489, 121.5819, gym=(46, 100), swim=(30, 200))
+_WSSC = _v("wssc", 24.9969, 121.5594, gym=(31, 110), ice=(18, 120))
+_BTSC = _v("btsc", 25.1167, 121.5096, gym=(10, 60))          # no swim at all
+
+
+def test_emptiest_first():
+    assert [r["id"] for r in rank_venues([_NGSC, _BTSC, _WSSC], "gym")] == [
+        "btsc", "wssc", "ngsc"]          # 17%, 28%, 46%
+
+
+def test_all_zero_venue_is_never_recommended():
+    # 信義 read 0/65 and 0/165 at weekday noon: more likely shut than empty,
+    # and 0% would otherwise win every single time
+    assert [r["id"] for r in rank_venues([_XYSC, _NGSC], "gym")] == ["ngsc"]
+
+
+def test_venue_without_that_area_is_skipped():
+    assert [r["id"] for r in rank_venues([_BTSC, _NGSC], "swim")] == ["ngsc"]
+    assert [r["id"] for r in rank_venues([_WSSC, _NGSC], "ice")] == ["wssc"]
+
+
+def test_unknown_area_returns_nothing_rather_than_guessing():
+    assert rank_venues([_NGSC, _WSSC], "squash") == []
+
+
+def test_distance_is_reported_but_does_not_reorder():
+    out = rank_venues([_NGSC, _WSSC], "gym", near="ngsc")
+    assert [r["id"] for r in out] == ["wssc", "ngsc"]   # still emptiest first
+    assert out[1]["distance_km"] == 0.0                 # ngsc from itself
+    assert out[0]["distance_km"] > 5                    # wssc is further
+
+
+def test_max_km_excludes_the_far_one():
+    out = rank_venues([_NGSC, _WSSC, _BTSC], "gym", near="ngsc", max_km=3)
+    assert [r["id"] for r in out] == ["ngsc"]
+
+
+def test_no_near_means_no_distance_and_no_filtering():
+    out = rank_venues([_NGSC, _WSSC], "gym", max_km=1)
+    assert len(out) == 2
+    assert all(r["distance_km"] is None for r in out)
+
+
+def test_zero_capacity_is_not_divided_by():
+    broken = _v("brkn", 25.0, 121.5, gym=(5, 0))
+    assert rank_venues([broken, _NGSC], "gym") == rank_venues([_NGSC], "gym")

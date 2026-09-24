@@ -23,7 +23,9 @@
 
 - [x] 第 2 步（地圖部分）：Leaflet + OSM 地圖，12 間標點依使用率上色，點標記切換場館，瀏覽器定位 + 最近三間（距離在前端算，位置不上傳）
 - [ ] 第 2 步（清單部分）：依使用率 + 距離排序的完整比較清單
-- [ ] 第 3 步：`/api/recommend`（確定性排序）、Dify chatbot
+- [x] 第 3 步：`/api/recommend` 確定性排序（依使用率，可選 near/max_km；營業時間內全 0 的場館排除）
+- [x] Dify 串接方式：直接匯入 FastAPI 的 OpenAPI spec 當 Custom Tool（見 DIFY.md），已實測 Dify 容器打得到
+- [ ] 在 Dify 介面上實際建出 Chatflow 並測三個情境（DIFY.md 第 4 節）
 - [ ] 第 4 步：熱力圖（≥2 週資料）、到達時預測（≥4 週資料）
 - [ ] 第 5 步：遷移 k8s，收集器改 CronJob
 - [ ] 第 6 步：LINE
