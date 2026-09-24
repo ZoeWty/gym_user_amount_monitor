@@ -92,7 +92,26 @@ The rules exist because each one is a failure that has already happened or is
 one prompt away: models reorder lists they are told to preserve, invent a
 thirteenth venue, and present nine-hour-old numbers as current.
 
-## 4. Check it works
+## 4. Put the bubble on the dashboard
+
+Publish the app, then **Publish → Embed in website** and copy the `token` out of
+the snippet Dify shows. Put it in `.env` at the repo root:
+
+```
+VITE_DIFY_TOKEN=<the token from the snippet>
+VITE_DIFY_URL=http://localhost
+```
+
+```bash
+docker compose up -d --build api
+```
+
+The rebuild is required: Vite bakes both values into the bundle, so they are
+Docker build args rather than runtime environment. With no token the component
+renders nothing, so the dashboard is never left with a button that fails when
+pressed.
+
+## 5. Check it works
 
 Ask it three things:
 
@@ -107,6 +126,10 @@ Compare its answer against the endpoint directly:
 ```bash
 curl -s "http://localhost:8000/api/recommend?area=swim&near=xysc&limit=3"
 ```
+
+In the cloud, `VITE_DIFY_URL` has to be an address the *browser* can reach, not
+`host.docker.internal` -- that name only resolves inside a container. The two
+URLs point at different things and are set independently.
 
 If the bot's order differs from the JSON, the prompt is losing to the model.
 Tighten the instruction; do not move ranking into the model.

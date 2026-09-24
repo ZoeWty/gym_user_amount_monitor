@@ -21,7 +21,11 @@ services:
       retries: 10
 
   api:
-    build: .
+    build:
+      context: .
+      args:
+        VITE_DIFY_TOKEN: ${VITE_DIFY_TOKEN:-}
+        VITE_DIFY_URL: ${VITE_DIFY_URL:-http://localhost}
     environment:
       DATABASE_URL: postgresql://gym:${POSTGRES_PASSWORD}@db:5432/gym
     ports:

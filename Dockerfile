@@ -4,6 +4,12 @@ WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
+# Vite substitutes these into the bundle at build time, so they are build args
+# rather than runtime env. No token means the chat bubble is simply absent.
+ARG VITE_DIFY_TOKEN=""
+ARG VITE_DIFY_URL="http://localhost"
+ENV VITE_DIFY_TOKEN=$VITE_DIFY_TOKEN
+ENV VITE_DIFY_URL=$VITE_DIFY_URL
 RUN npm run build
 
 # --- runtime ---------------------------------------------------------------

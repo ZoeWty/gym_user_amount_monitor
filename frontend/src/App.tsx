@@ -4,6 +4,7 @@ import {
   type Lang,
 } from './i18n'
 import OccupancyChart from './OccupancyChart'
+import DifyChat from './DifyChat'
 import StatCard from './StatCard'
 import VenueMap from './VenueMap'
 import type { Latest, Series, Venue } from './types'
@@ -194,6 +195,8 @@ function Dashboard({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) 
       {venues.length > 0 && (
         <VenueMap venues={venues} selected={venue} onSelect={setVenue} />
       )}
+
+      <DifyChat />
     </main>
   )
 }
