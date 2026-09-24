@@ -23,13 +23,20 @@ docker compose logs poller --no-log-prefix --tail 30 2>/dev/null \
 echo
 echo "④ 資料庫 —— 資料真的寫進去了嗎？"
 docker compose exec -T db psql -U gym -d gym -tAc \
-  "SELECT to_char(ts AT TIME ZONE 'Asia/Taipei','MM-DD HH24:MI')||'  '||area||'='||current
+  "SELECT to_char(ts AT TIME ZONE 'Asia/Taipei','MM-DD HH24:MI:SS')||'  '||area||'='||current
    FROM occupancy WHERE venue='$V' ORDER BY ts DESC LIMIT 4;" 2>/dev/null \
   || echo "  ✗ 查不到資料庫"
 
 echo
-echo "⑤ API —— 後端吐出來的是什麼？"
+echo "⑤ 有沒有重複列？(同一個 venue/area/ts 出現兩次 = 某個區域被兩個來源寫入)"
+docker compose exec -T db psql -U gym -d gym -tAc \
+  "SELECT coalesce(string_agg(venue||'/'||area, ', '), '  無') FROM
+   (SELECT venue, area FROM occupancy GROUP BY venue, area, ts HAVING count(*) > 1) d;" \
+  2>/dev/null || echo "  ✗ 查不到資料庫"
+
+echo
+echo "⑥ API —— 後端吐出來的是什麼？"
 curl -s -m 5 "http://localhost:8000/api/latest?venue=$V" || echo "  ✗ API 沒回應"
 
 echo
-echo "── ①~⑤ 都正常 = 後端沒事，問題在瀏覽器快取，按 Cmd+Shift+R 硬重新整理 ──"
+echo "── ①~⑥ 都正常 = 後端沒事，問題在瀏覽器快取，按 Cmd+Shift+R 硬重新整理 ──"
