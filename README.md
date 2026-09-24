@@ -75,6 +75,34 @@ curl -s https://<子網域>.cyc.org.tw/api
 過濾是在**讀取時**做的，不是寫入時：非營業時間的資料列照常存進資料庫。
 所以要改時間、或要看回夜間資料，改常數就好，不需要回填。
 
+## 筆電睡眠 = 資料斷掉
+
+macOS 睡眠會把整個 Docker 虛擬機一起凍結，容器裡的 `time.sleep()` 不會前進。
+容器狀態還是 `Up`，但那段時間完全沒有抓取 —— 圖上就是一個洞。
+**沒有任何 Docker 設定能繞過這件事。**
+
+想收完整的一天，選一個：
+
+```bash
+# A. 暫時不讓筆電睡（接電源、螢幕不要闔上）。Ctrl+C 結束
+caffeinate -i
+
+# B. 只在跑某個指令期間不睡
+caffeinate -i docker compose logs -f poller
+```
+
+長期的正解是把 poller 放到雲端，那才是真正的 24 小時。
+
+## 排查
+
+```bash
+./check.sh ngsc
+```
+
+從上游 → 容器 → poller log → 資料庫 → API 依序檢查，第一個出錯的站就是問題所在。
+
+注意：**容器 log 是 UTC，台灣時間要 +8。**
+
 ## 對外公開
 
 1. 在 Cloudflare Zero Trust 建立 tunnel，指向 `http://api:8000`。
