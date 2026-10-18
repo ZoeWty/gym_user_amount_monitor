@@ -6,3 +6,9 @@ __pycache__/
 node_modules/
 dist/
 backups/
+
+# Pages build output — the workflow rebuilds it on every run.
+# docs/data is committed: it is the Pages site's store, not build output.
+docs/assets/
+docs/index.html
+docs/.nojekyll

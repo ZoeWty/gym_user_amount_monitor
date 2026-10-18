@@ -15,6 +15,13 @@
 - [x] `scripts/backup.sh`：dump 後自動還原到臨時資料庫比對列數，不符就 exit 1（演練內建，不是另一支要記得跑的腳本）
 - [ ] 把 `scripts/backup.sh` 掛上 VM 的 cron，輸出目錄指到 VM 以外的儲存空間
 
+## GitHub Pages
+
+- [x] 靜態版前端（`VITE_DATA_BASE` 切換資料來源）
+- [x] `scripts/static_site.py`：seed / collect / build
+- [x] Actions workflow：每 30 分鐘收集 + 部署
+- [ ] **到 repo Settings → Pages → Source 選 GitHub Actions**（只有你能點）
+
 ## 本週的實地作業
 
 - [ ] 問 3 位下班後會去運動中心的人：「上一次去了才發現人太多，是什麼時候？哪一間、幾點？」記下名字、場館、時間

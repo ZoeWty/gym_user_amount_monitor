@@ -1,0 +1,91 @@
+# Publishes the dashboard to GitHub Pages, and collects while it is there.
+#
+# Pages cannot run the poller, the API, or Postgres -- it serves files. So this
+# workflow does the collecting itself: it calls the same upstream endpoint the
+# poller does, appends to docs/data/history.jsonl, regenerates the JSON the
+# frontend reads, and deploys.
+#
+# This is also the only collector that does not sleep. The laptop one has
+# managed about 6 hours of coverage a day; this one runs whether the machine is
+# open or not.
+name: Pages
+
+on:
+  schedule:
+    # Every 30 minutes. GitHub's cron is best-effort and often runs late, which
+    # is fine here -- a late reading is still a reading, and gaps render as gaps.
+    - cron: '*/30 * * * *'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write      # committing the collected readings
+  pages: write
+  id-token: write
+
+# Never let two runs collect at once: both would append to history.jsonl and
+# the second push would be rejected.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Collect a reading
+        run: |
+          pip install --quiet httpx
+          python scripts/static_site.py collect
+
+      - name: Rebuild the static data
+        run: python scripts/static_site.py build
+
+      - name: Commit the new readings
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/data
+          git diff --staged --quiet || git commit -m "Collect readings [skip ci]"
+          git push
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build the dashboard
+        working-directory: frontend
+        env:
+          # No backend on Pages: read the generated files instead of /api/*.
+          VITE_DATA_BASE: ./data
+          VITE_BASE: /gym_user_amount_monitor/
+        run: |
+          npm ci
+          npm run build
+          cp -r dist/* ../docs/
+          # Pages otherwise runs the output through Jekyll, which drops
+          # directories beginning with an underscore.
+          touch ../docs/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

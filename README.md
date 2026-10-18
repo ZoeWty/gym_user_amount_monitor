@@ -98,6 +98,25 @@ Settings → General → **Start Docker Desktop when you sign in** 打勾。
 
 想確認重開機後真的活著，重開一次再跑 `./check.sh`。
 
+## GitHub Pages 公開版
+
+`https://zoewty.github.io/gym_user_amount_monitor/`
+
+Pages 只能放靜態檔，所以沒有 FastAPI、沒有 Postgres、沒有 poller。
+前端改讀 `docs/data/` 底下預先產生的 JSON，形狀跟 live API 完全一樣
+（匯出器直接呼叫同一批 route function，不會各自長歪）。
+
+`.github/workflows/pages.yml` 每 30 分鐘抓一次上游、append 到
+`docs/data/history.jsonl`、重新產生 JSON、部署。**這是唯一不會睡著的收集器**
+—— 筆電那套平均一天只收到 6/14 小時。
+
+```bash
+python scripts/static_site.py seed     # Postgres -> history.jsonl（只做一次）
+python scripts/static_site.py build    # history.jsonl -> docs/data/
+```
+
+**要你做一次**：GitHub repo → Settings → Pages → Source 選 **GitHub Actions**。
+
 ## Dify chatbot
 
 見 [DIFY.md](DIFY.md)。排序在後端算，LLM 只負責問問題和轉述。

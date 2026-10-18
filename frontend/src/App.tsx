@@ -13,8 +13,36 @@ import type { Latest, Series, Venue } from './types'
 const taipeiToday = () =>
   new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date())
 
-async function getJSON<T>(url: string): Promise<T> {
+/**
+ * Where the data comes from.
+ *
+ * Empty (the default) means the FastAPI backend on the same origin. On GitHub
+ * Pages there is no backend at all, so VITE_DATA_BASE points at a folder of
+ * pre-generated JSON and the query strings become paths -- static hosting
+ * cannot answer `?venue=ngsc`, only `/ngsc.json`.
+ *
+ * The payloads are identical either way: the exporter calls the same route
+ * functions the live API does, so neither side can drift from the other.
+ */
+const DATA_BASE = (import.meta.env.VITE_DATA_BASE as string | undefined) ?? ''
+
+export const api = {
+  venues: () => (DATA_BASE ? `${DATA_BASE}/venues.json` : '/api/venues'),
+  latest: (venue: string) =>
+    DATA_BASE ? `${DATA_BASE}/latest/${venue}.json` : `/api/latest?venue=${venue}`,
+  series: (venue: string, date: string) =>
+    DATA_BASE
+      ? `${DATA_BASE}/series/${venue}/${date}.json`
+      : `/api/series?venue=${venue}&date=${date}`,
+}
+
+async function getJSON<T>(url: string): Promise<T | null> {
   const res = await fetch(url)
+  // A day with no file is a day with no data, not a failure. Static hosting
+  // only has files for days that were collected, and plenty were not -- the
+  // laptop collector managed about six hours a day. Return null so the page
+  // can say "no data" instead of showing an error over a stale chart.
+  if (res.status === 404 && DATA_BASE) return null
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`)
   return res.json() as Promise<T>
 }
@@ -43,16 +71,26 @@ function useLiveFetch<T>(
   url: string | null,
   live: boolean,
   onError: (message: string) => void,
-): T | null {
-  const [data, setData] = useState<T | null>(null)
+): [T | null, boolean] {
+  const [state, setState] = useState<{ data: T | null; loaded: boolean }>({
+    data: null,
+    loaded: false,
+  })
 
   useEffect(() => {
     if (!url) return
     let cancelled = false
+    // Drop the previous url's data immediately. Without this, switching to a
+    // day that has no data left the old day's chart on screen under the new
+    // day's heading, which reads as real data for the wrong date.
+    setState({ data: null, loaded: false })
+
     const load = () =>
       getJSON<T>(url)
-        .then((d) => { if (!cancelled) setData(d) })
-        .catch((e) => { if (!cancelled) onError(String(e)) })
+        .then((d) => { if (!cancelled) setState({ data: d, loaded: true }) })
+        .catch((e) => {
+          if (!cancelled) { setState({ data: null, loaded: true }); onError(String(e)) }
+        })
 
     load()
     if (!live) return () => { cancelled = true }
@@ -70,7 +108,7 @@ function useLiveFetch<T>(
     }
   }, [url, live, onError])
 
-  return data
+  return [state.data, state.loaded]
 }
 
 export default function App() {
@@ -106,19 +144,19 @@ function Dashboard({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) 
 
 
   useEffect(() => {
-    getJSON<Venue[]>('/api/venues')
+    getJSON<Venue[]>(api.venues())
       .then((vs) => {
-        setVenues(vs)
-        setVenue((v) => v || vs[0]?.id || '')
+        setVenues(vs ?? [])
+        setVenue((v) => v || vs?.[0]?.id || '')
       })
       .catch((e) => setError(String(e)))
   }, [])
 
   // Both stay live only while today is on screen; a past day cannot change.
-  const latest = useLiveFetch<Latest>(
-    venue ? `/api/latest?venue=${venue}` : null, isToday, setError)
-  const series = useLiveFetch<Series>(
-    venue ? `/api/series?venue=${venue}&date=${date}` : null, isToday, setError)
+  const [latest] = useLiveFetch<Latest>(
+    venue ? api.latest(venue) : null, isToday, setError)
+  const [series, seriesLoaded] = useLiveFetch<Series>(
+    venue ? api.series(venue, date) : null, isToday, setError)
   // Recomputed on every render, and useLiveFetch re-renders once a minute
   // whether the fetch succeeds or fails, so no separate ticker is needed.
   const fetchedAt = latest?.fetched_at ? new Date(latest.fetched_at) : null
@@ -189,7 +227,11 @@ function Dashboard({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) 
           <span className="hours">{s.openHours(series.open_from, series.open_to)}</span>
         )}
       </h2>
-      {series ? <OccupancyChart series={series} /> : <p className="empty">{s.loading}</p>}
+      {series ? (
+        <OccupancyChart series={series} />
+      ) : (
+        <p className="empty">{seriesLoaded ? s.noDataThatDay : s.loading}</p>
+      )}
       <p className="note">{s.gapNote}</p>
 
       {venues.length > 0 && (
