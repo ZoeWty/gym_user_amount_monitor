@@ -42,7 +42,11 @@ jobs:
 
       - name: Collect a reading
         run: |
-          pip install --quiet httpx
+          # The backend's own requirements, not a hand-picked subset: collect
+          # imports poll.py (which pulls in psycopg via db.py) and build imports
+          # main.py (fastapi). Neither touches a database -- there is none here
+          # -- but both fail at import without the packages.
+          pip install --quiet -r backend/requirements.txt
           python scripts/static_site.py collect
 
       - name: Rebuild the static data
@@ -54,6 +58,9 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/data
           git diff --staged --quiet || git commit -m "Collect readings [skip ci]"
+          # main may have moved since checkout (you pushed mid-run); replay this
+          # commit on top rather than having the push rejected.
+          git pull --rebase --quiet
           git push
 
       - uses: actions/setup-node@v4
