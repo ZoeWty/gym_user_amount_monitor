@@ -11,4 +11,3 @@ backups/
 # docs/data is committed: it is the Pages site's store, not build output.
 docs/assets/
 docs/index.html
-docs/.nojekyll
