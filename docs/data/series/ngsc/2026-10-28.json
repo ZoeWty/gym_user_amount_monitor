@@ -1,1 +1,1 @@
-{"venue":"ngsc","date":"2026-10-28","areas":["gym","swim"],"open_from":"08:00","open_to":"22:00","points":[]}
+{"venue":"ngsc","date":"2026-10-28","areas":["gym","swim"],"open_from":"08:00","open_to":"22:00","points":[{"ts":"2026-10-28T08:00:00+08:00","gym":null,"swim":null},{"ts":"2026-10-28T08:10:00+08:00","gym":null,"swim":null},{"ts":"2026-10-28T08:20:00+08:00","gym":53,"swim":106}]}
